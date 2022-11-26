@@ -1,0 +1,323 @@
+糜子群体基因组学分析流程
+一 BWA比对
+脚本及文件所在位置：/public1/home/sc80041/bc/data/bwa/o1.bwa.new.S*_S*.sh
+二 变异过滤
+脚本及文件所在位置：/public1/home/sc80041/bc/deal_vcf/gatk4.2
+1标记“PASS”提出来
+根据vcf文件的FILTER列来过滤
+--remove-filtered-all 过滤掉FILTER列不是“PASS”的记录，这一步grep也能做。
+vcftools --vcf gatk4.2.vcf --remove-filtered-all --recode --out gatk4.2.pass
+
+2 保留B-Allele
+①
+把“#”的注释信息挑取出来
+grep -E "#" gatk4.2.pass.recode.vcf > gatk4.2.pass.#.vcf
+非“#”开头的行提出来
+awk '{if($1!~"#")print $0}' gatk4.2.pass.recode.vcf > gatk4.2.pass.noheader.vcf
+对其进行保留B-Allele
+awk '{if($5!~",") print $0}' gatk4.2.pass.noheader.vcf > gatk4.2.pass.qudou.noheader.vcf
+②
+awk '{if($5!~",") print $0}' gatk4.2.pass.recode.vcf > gatk4.2.pass.qudou.vcf
+
+3 过滤杂合度
+直接拿上面过滤后的noheader的(gatk4.2.pass.qudou.noheader.vcf)来进行过滤并合并
+python -u /public1/home/sc80041/bc/script/filter.mixed.py gatk4.2.pass.qudou.noheader.vcf
+
+
+合并文件
+cat gatk4.2.pass.#.vcf gatk4.2.pass.qudou.noheader.vcf.filter.mixed.vcf > gatk4.2.pass.qudou.filter.mixed.vcf
+
+4 对其进行加id
+perl /public1/home/sc80041/bc/script/VCF_add_id.pl gatk4.2.pass.qudou.filter.mixed.vcf gatk4.2.pass.qudou.filter.mixed.id.vcf
+
+5 提取indels和SNPs
+提取SNPs：
+vcftools --vcf gatk4.2.pass.qudou.filter.mixed.id.vcf --remove-indels --out gatk4.2.pass.qudou.filter.mixed.id.SNP --recode --recode-INFO-all && echo "---snp done---"
+得到文件：
+gatk4.2.pass.qudou.filter.mixed.id.SNP.recode.vcf
+提取INDELs:
+vcftools --vcf gatk4.2.pass.qudou.filter.mixed.id.vcf --keep-only-indels --out gatk4.2.pass.qudou.filter.mixed.id.INDEL --recode --recode-INFO-all && echo "---indels done---"
+gatk4.2.pass.qudou.filter.mixed.id.INDEL.recode.vcf
+6 拆分亚基因组
+亚基因组A：
+awk '$1~"#"|| $1=="Chr01"||$1=="Chr02"||$1=="Chr03"||$1=="Chr05"||$1=="Chr06"||$1=="Chr07"||$1=="Chr09"||$1=="Chr13"||$1=="Chr14" {print $0}'  gatk4.2.pass.qudou.filter.mixed.id.vcf > gatk4.2.pass.qudou.filter.mixed.id.subA.vcf && echo "---pick subA done---" &&
+亚基因组B：
+awk '$1~"#"||$1=="Chr04"||$1=="Chr08"||$1=="Chr10"||$1=="Chr11"||$1=="Chr12"||$1=="Chr15"||$1=="Chr16"||$1=="Chr17"||$1=="Chr18" {print $0}' gatk4.2.pass.qudou.filter.mixed.id.vcf > gatk4.2.pass.qudou.filter.mixed.id.subB.vcf && echo "---pick subB done---"
+版本	vcf情况	地址
+gatk4.2		/public1/home/sc80041/bc/deal_vcf/gatk4.2
+	原始的	gatk4.2.vcf
+	“PASS”后	gatk4.2.pass.recode.vcf
+	保留B-ALLELE	gatk4.2.pass.qudou.noheader.vcf
+	过滤了杂合的	gatk4.2.pass.qudou.noheader.vcf.filter.mixed.vcf
+gatk4.2.pass.qudou.filter.mixed.vcf(有“#”)
+	加了id的（定版）	gatk4.2.pass.qudou.filter.mixed.id.vcf
+	只有SNPs	gatk4.2.pass.qudou.filter.mixed.id.SNP.recode.vcf
+	只有Indels	gatk4.2.pass.qudou.filter.mixed.id.INDEL.recode.vcf
+	亚基因组A	gatk4.2.pass.qudou.filter.mixed.id.subA.vcf
+	亚基因组B	gatk4.2.pass.qudou.filter.mixed.id.subB.vcf
+		
+gatk3.8		/public1/home/sc80041/bc/deal_vcf/gatk3.8
+	原始的	gatk.unified.vcf
+	过滤了杂合的	gatk.unified.noheader.vcf.filter.mixed.vcf
+	过滤了低质量的（当质量值大于等于50时）才被保留	gatk.unified.noheader.vcf.filter.mixed.vcf.qual.vcf
+gatk.unified.filter.mixed.qual.vcf
+	加了id的（定版）	gatk.unified.filter.mixed.qual.id.vcf
+	只有SNPs	gatk.unified.filter.mixed.qual.id.SNP.recode.vcf
+	只有Indels	gatk.unified.filter.mixed.qual.id.INDEL.recode.vcf
+	亚基因组A	gatk.unified.filter.mixed.qual.id.subA.vcf
+	亚基因组B	gatk.unified.filter.mixed.qual.id.subB.vcf
+
+三 gatk3.8和gatk4.2重叠情况
+按SNP、Indel分别对两个流程进行评估：
+#提取两个流程的SNPs的位置并进行sort
+cat gatk3.8.snp.vcf | grep -v "#" |  awk -v OFS="\t" '{print $1,$2}' > gatk3.8.snp.pos.txt
+sort -k1,1 -k2,2n gatk3.8.snp.pos.txt > gatk3.8.snp.pos.sorted.txt
+#取出相同的部分
+grep -wf gatk3.8.snp.pos.sorted.txt gatk4.2.snp.pos.sorted.txt > gatk.snp.chongdie.pos.txt 
+#取出gatk4.2独有的部分
+grep -wvf gatk3.8.snp.pos.sorted.txt gatk4.2.snp.pos.sorted.txt > gatk4.2.snp.uniq.pos.txt 
+#取出gatk3.8独有的部分
+grep -wvf gatk4.2.snp.pos.sorted.txt gatk3.8.snp.pos.sorted.txt > gatk3.8.snp.uniq.pos.txt 
+#再计算行数
+同理Indels也是如此计算
+
+四 变异注释
+1 对于gatk4.2和gatk3.8，拿加了id的进行变异注释
+/public1/home/sc80041/bc/deal_vcf/gatk4.2/gatk4.2.pass.qudou.filter.mixed.id.vcf
+
+2 两种方法变异重叠情况
+进行中
+3 变异位点缺失率及MAF分布情况
+因为有两种过滤，一是直接杂合度过滤，二是又经质量分数的过滤
+snp缺失率脚本准备数据
+/public1/home/sc80041/bc/deal_vcf/missing_rate/o1.vcftools.sh
+1 准备数据
+#计算每个snp的样本的snp缺失率
+vcftools --vcf /public1/home/sc80041/bc/deal_vcf/vcf/gatk3.8.snp.qual.vcf --missing-site
+生成“out.lmiss”文件
+2使用awk命令进行挑取缺失率
+awk '{print $6}' out.lmiss > out.lmiss.f_miss.txt
+##3.8和4.2结果文件都准备好
+3脚本画缺失率分布图（jupyter画图）
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+sns.set_style('white')
+plt.figure(figsize=(10,8),dpi=300)
+data1=pd.read_csv('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\gatk3.8.snp.mix.miss.txt')
+data2=pd.read_csv('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\gatk4.2.snp.mix.miss.txt')
+ax1=sns.kdeplot(data1['F_MISS'],linestyle='-',linewidth=2.0,color='blue')
+ax2=sns.kdeplot(data2['F_MISS'],linestyle='-',linewidth=2.0,color='red')
+plt.legend(labels=['gatk3.8_mix.F_MISS','gatk4.2_mix.F_MISS'],loc='upper right')
+plt.xlabel('SNPs missing rate')
+plt.ylabel('Density')
+plt.savefig('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\Missing.mix.png')
+
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+sns.set_style('white')
+plt.figure(figsize=(10,8),dpi=300)
+data1=pd.read_csv('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\gatk3.8.snp.qual.miss.txt')
+data2=pd.read_csv('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\gatk4.2.snp.qual.miss.txt')
+ax1=sns.kdeplot(data1['F_MISS'],linestyle='-',linewidth=2.0,color='blue')
+ax2=sns.kdeplot(data2['F_MISS'],linestyle='-',linewidth=2.0,color='red')
+plt.legend(labels=['gatk3.8_qual.F_MISS','gatk4.2_qual.F_MISS'],loc='upper right')
+plt.xlabel('SNPs missing rate')
+plt.ylabel('Density')
+plt.savefig('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\Missing.qual.png')
+
+
+maf脚本
+/public1/home/sc80041/bc/deal_vcf/gatk4.2/maf/maf.sh
+/public1/home/sc80041/bc/deal_vcf/gatk3.8_new/maf/maf.sh
+1 #选出snp对应的次要等位基因频率情况
+plink --vcf ../gatk.unified.filter.mixed.qual.id.snp.recode.vcf --freq --allow-extra-chr --out ./gatk.3.8.snp.vcf
+得到*.frq文件
+2.用awk进行挑取
+awk '{print $5}' gatk.3.8.snp.vcf.frq > gatk.3.8.snp.frq.txt
+##3.8和4.2结果文件都准备好
+3脚本画maf分布图(jupyter画图)
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+sns.set_style('white')
+plt.figure(figsize=(5,4),dpi=600)
+data1=pd.read_csv('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\gatk.3.8.snp.mix.frq.txt')
+data2=pd.read_csv('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\gatk4.2.snp.mix.vcf.frq.txt')
+ax1=sns.kdeplot(data1['MAF'],label='MAF',linestyle='-',linewidth=2.0,color='blue')
+ax2=sns.kdeplot(data2['MAF'],label='MAF',linestyle='-',linewidth=2.0,color='red')
+plt.legend(labels=['gatk3.8.mix.MAF','gatk4.2.mix.MAF'],loc='upper right')
+plt.xlabel('SNPs MAF')
+plt.ylabel('Density')
+plt.savefig('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\MAF.mix.png')
+
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+sns.set_style('white')
+plt.figure(figsize=(5,4),dpi=600)
+data1=pd.read_csv('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\gatk.3.8.snp.qual.vcf.frq.txt')
+data2=pd.read_csv('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\missing_maf\\gatk4.2.snp.qual.vcf.frq.txt')
+ax1=sns.kdeplot(data1['MAF'],label='MAF',linestyle='-',linewidth=2.0,color='blue')
+ax2=sns.kdeplot(data2['MAF'],label='MAF',linestyle='-',linewidth=2.0,color='red')
+plt.legend(labels=['gatk3.8.qual.MAF','gatk4.2.qual.MAF'],loc='upper right')
+plt.xlabel('SNPs MAF')
+plt.ylabel('Density')
+plt.savefig('G:\\1 research\\糜子谷子群体\\糜子\\并行数据\\MAF.qual.png')
+
+4 画snp,indel密度分布旧图
+（更新版：因为后来用R画图但是同一脚本画出来的图不一致，故使用circos画图）
+脚本所在位置：
+/public1/home/sc80041/bc/deal_vcf/gatk4.2/snp_indel_density/snp_density.sh
+/public1/home/sc80041/bc/deal_vcf/gatk4.2/snp_indel_density/indel_density.sh
+1 首先是取染色体上的变异位点
+less -S ../gatk4.2.pass.qudou.filter.mixed.id.INDEL.recode.vcf | grep -v '#'|grep 'Chr' > ./gatk4.2.indel.vcf
+awk '{ sub(/Chr/,""); print $0 }' gatk4.2.indel.vcf > gatk4.2.indel.Chrsub.vcf
+cut -f 1,2 gatk4.2.indel.Chrsub.vcf > gatk4.2.indel.Chrsub.list2.vcf 
+python3 snp_indel.py gatk4.2.indel.Chrsub.list2.vcf > gatk4.2.indel.Chrsub.list2.py.vcf
+##将其改成这种格式1 1 43221
+##print.format.py脚本内容
+a = 0
+import sys
+for file in sys.argv[1:]:
+    with open(file,'r') as f:
+        for i in f.readlines():
+            b,c = i.strip().split()
+            a += 1
+            print('{}\t{}\t{}'.format(a,b,c))
+2  R脚本画图
+library("CMplot")
+pig <- read.table("gatk4.2.indel.Chrsub.list2.py.vcf",header=T)
+data(pig)
+CMplot(pig,plot.type="d",bin.size=1e6,col=c("darkgreen","yellow","red"),file="pdf",memo="indel_density",dpi=300,file.output=TRUE,verbose=TRUE)
+图如下：
+gatk3.8_snp
+
+gatk3.8_indel
+
+gatk4.2_snp
+
+gatk4.2_indel
+
+5 画SNP、INDEL密度分布新图
+准备脚本在：
+/public1/home/sc80041/bc/deal_vcf/gatk4.2/snp_indel_density_new/snp_density.sh
+/public1/home/sc80041/bc/deal_vcf/gatk4.2/snp_indel_density_new/indel_density.sh
+/public1/home/sc80041/bc/deal_vcf/gatk3.8_new/snp_indel_density_new/snp_density.sh
+/public1/home/sc80041/bc/deal_vcf/gatk3.8_new/snp_indel_density_new/indel_density.sh
+服务器上画图：
+/data3/ganyx/bc2022/density/cicos_density/bc.INDEL.mix.qual.conf 、bc.SNP.mix.qual.conf
+
+
+
+
+
+SNPs：
+
+INDELs:
+
+
+五 群体结构
+1 PCA
+##取染色体进行maf0.05
+less -S ../gatk4.2.pass.qudou.filter.mixed.id.SNP.recode.vcf |grep -E '#|Chr' > gatk4.2.SNP.Chr.vcf 
+plink --vcf gatk4.2.SNP.Chr.vcf --maf 0.05  --recode vcf-iid -out gatk4.2.SNP.Chr.maf0.05 --allow-extra-chr 
+##用vcftools将vcf转换为plink格式的ped、map
+vcftools --vcf gatk4.2.SNP.Chr.maf0.05.vcf --plink --out gatk4.2.SNP.Chr.maf0.05.plink.vcf 
+##用plink软件将ped、map转成bed格式
+plink --file gatk4.2.SNP.Chr.maf0.05.plink.vcf --make-bed --out gatk4.2.SNP.Chr.maf0.05.plink.last
+随后使用gcta进行分析（以gatk4.2为例子）
+脚本：/public1/home/sc80041/bc/deal_vcf/gatk4.2/pca/gcta_snp
+①输出grm阵列
+gcta64 --make-grm --bfile ../gatk4.2.SNP.Chr.maf0.05.plink.last --autosome --thread-num 10 --out gatk4.2.SNP.Chr.maf0.05.plink.gcta
+②利用矩阵，计算pca分析
+gcta64 --grm gatk4.2.SNP.Chr.maf0.05.plink.gcta --pca 20 --thread-num 10 --out gatk4.2.SNP.Chr.maf0.05.pca 
+结果生成两个文件：
+gatk4.2.SNP.Chr.maf0.05.pca.eigenval、gatk4.2.SNP.Chr.maf0.05.pca.eigenvec
+③对文件gatk4.2.SNP.Chr.maf0.05.pca.eigenvec进行糯和非糯、NA类别的排序输出
+cat /public1/home/sc80041/bc/data/mi_nuo/199.name.sorted.txt | while read line
+do	
+cat gatk4.2.SNP.Chr.maf0.05.pca.eigenvec | grep -m 1 $line >> gatk4.2.SNP.Chr.maf0.05.pca.eigenvec.sorted.txt
+done
+④对生成的gatk4.2.SNP.Chr.maf0.05.pca.eigenvec.sorted.txt进行加行头：1 2 pc1 pc2 … pc20（分隔符为空格），并保存。
+⑤画图
+a <- read.table("./gatk4.2.SNP.Chr.maf0.05.pca.eigenvec.sorted.txt",header=T)
+plot(a$pc1,a$pc2,type="p",pch=16,col=c(rep("blue",65),rep("red",84),rep("black",50)),main="PCA",xlab="pc1(11.34%)",ylab="pc2(8.12%)")
+legend("topleft",legend=c("mei","shu"),col=c("blue","red","black"),lty=1,lwd=1)
+png(file="pca.gatk4.2.SNP.mishu.png")
+dev.off()
+
+图：
+gatk3.8 snp:
+
+gatk3.8 indel:
+
+
+gatk4.2 snp:
+
+gatk4.2 indel:
+
+2 admixture
+用PCA中plink生成的bed文件
+运行脚本
+source activate /public1/home/sc80041/bc/data/software/env/plink
+for K in {1,2,3,4,5,6,7,8,9,10}
+do
+        admixture --cv ../pca/gatk3.8.SNP.Chr.maf0.05.plink.last.bed $K | tee log${K}.snp.out
+done
+##snp,indel都做
+##根据log文件，找到CV error最低的Q值
+grep -h CV log*.out |sort -nk4  -t ' ' > CV.txt
+##对最低Q值文件排序
+sort -k1,1 -k2,2n -k3,3n -k4,4n -k5,5n -k6,6n -k7,7n -k8,8n -k9,9n gatk4.2.SNP.Chr.maf0.05.plink.last.9.Q > 4.2snp.9.Q
+##网页可视化
+http://pophelper.com/
+
+
+
+
+3 Phylogenetic tree
+输入文件为原始vcf拆分出的snp.vcf文件
+##为输入文件生成map,ped文件，第二步需要
+source activate /public1/home/sc80041/miniconda3/envs/ganyuanxian
+vcftools --vcf ../gatk.unified.filter.mixed.qual.id.SNP.recode.vcf --plink --out ../gatk.unified.filter.mixed.qual.id.SNP.recode.vcf
+##plink筛选maf>0.05的变异位点，并构建遗传距离矩阵
+source activate /public1/home/sc80041/bc/data/software/env/plink
+plink --file ../gatk.unified.filter.mixed.qual.id.SNP.recode.vcf --maf 0.05 --distance-matrix --out 3.8distance   ##此步骤生成*.mdist与*.mdist.id文件
+less -S 3.8distance.mdist
+
+less -S 3.8distance.mdist.id
+
+##为3.8distance.mdist遗传矩阵横纵列加上ID为10字符的样品名（后续phylip要求）
+awk '{print $1 "**********"}' 3.8distance.mdist.id |cut -b 1-10 > new.name10.txt  ##列名
+awk '{printf $1 "\t"}' new.name10.txt > new.name10.hang.txt  ##列名转为行名
+paste 将列名放至矩阵第一列
+vi去掉行名最后的tab空格 
+cat 将行名放至矩阵第一行，结果文件：distance.mdist
+vi distance.mdist ##在结果文件第一行行头添加样品数
+
+##phylip生成outtree文件
+命令输入：public1/home/sc80041/bc/data/software/env/plink/bin/neighbor
+命令输入：distance.mdist
+命令输入：Y
+##iTOLs在线美化进化树
+gatk3.8(两种展示方式，相同的数据 糜(非糯):65   黍(糯):84 )
+
+gatk4.2
+
+
+
+
+
+
