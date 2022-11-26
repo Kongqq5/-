@@ -1,0 +1,30 @@
+1 添加文本名称
+/data3/ganyx/pga/foxtail_millet/download/dl763_999.py
+
+/data3/kongqq/broomcorn-millet/data/fastp.data/name_batch.py
+
+
+2 写命令行
+
+
+3 提交shell命令：sh seqkit.sh > seq.result
+
+4 提取第一、五列
+awk -v OFS=”\t” ‘{print $1,$5}’ xxx.log > xxx_pick2.txt
+
+5 检查数据有无问题
+
+6 无问题去除每一行的行名
+awk '!(NR%2)' xxx_pick2.txt > xxx_pick2.data.txt
+
+
+7 挑出第二列
+awk ‘{print $2}’ xxx_pick2.data.txt > xxx_pick2.data.new.txt
+
+8 
+
+
+/data1/ganyx/foxtail_millet/seqkit/cexudepth_num.py
+
+9 vi加列名
+10 画图
