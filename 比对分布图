@@ -1,0 +1,27 @@
+做出三个测序平台的数据比对Mo17数据情况图
+以B73_Pacbio_CLR的数据为例：
+
+根据脚本生成两幅图，一副是不同比对质量分布图，另一幅是不同测序深度下比对覆盖率图。
+
+在这部分呢，一是要生成比对的bam文件(节约空间不生成sam文件)；二是生成的bam文件要进行sort好，sort好后的文件要建立索引后，可以生成depth文件。
+
+不同比对质量分布图
+1 生成比对的bam文件；
+2 是引用python 的pysam模块，用脚本筛选出相应的mapping quality值>=1/10/20/30/40/50/60，得出不重复的行数；
+
+3最后对相应的MAPQ的不重复的行数除以三个测序平台的num_seqs，后乘以百分比；
+4 然后画出对应的质量分布图。
+不同测序深度下的比对覆盖率图
+1 生成比对的bam文件；
+
+2 对bam文件进行sort；
+samtools sort -@ 25 /data1/ganyx/maize/B73_PacBio_CLR/alignment/pacbio_aln.bam -o /data1/ganyx/maize/B73_PacBio_CLR/alignment/pacbio_aln_sort_aln.bam
+3 对sorted好的文件进行index
+
+
+4 然后生成depth文件
+samtools depth -Q 1 /data1/ganyx/maize/B73_PacBio_CLR/alignment/pacbio_aln_sort_aln.bam > Pac_Q1.depth
+5 生成不同的测序深度后的depth文件后再用脚本进行统计
+脚本如下：
+
+6统计好相应的数字后，除以Mo17的sum_seqs总长度
